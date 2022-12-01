@@ -117,7 +117,7 @@ add_executable(executable_1)
 kconfig_add_target(executable_1)
 
 # Link library_1 to executable_1 depending on config
-target_link_libraries(executable_1 PUBLIC $<$<BOOL:$<TARGET_PROPERTY:CONFIG_USE_LIBRARY_1>>:spdlog>)
+target_link_libraries(executable_1 PUBLIC $<$<BOOL:$<TARGET_PROPERTY:CONFIG_USE_LIBRARY_1>>:library_1>)
 
 # Add custom defines depending on config
 target_compile_definitions(executable_1 PUBLIC $<$<BOOL:$<TARGET_PROPERTY:CONFIG_DEF_FOO>>:FOO_DEFINED>)
