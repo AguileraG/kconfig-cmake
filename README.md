@@ -68,7 +68,7 @@ This script also generates a c header that can be preincluded to targets by sett
 ├── cmake            - cmake scripts
 │ └── kconfig-cmake  - this repo
 ├── CMakeLists.txt   - root CMakeLists
-├── KConfig          - KConfig
+├── Kconfig          - Kconfig file
 │── configs          - config directory
 │ └── defconfig      
 └── src              - project sources
@@ -77,7 +77,7 @@ This script also generates a c header that can be preincluded to targets by sett
 ## Files
 
 
-### KConfig
+### Kconfig
 ```kconfig
 menu "Project Configuration"
 
