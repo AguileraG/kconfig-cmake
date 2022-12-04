@@ -511,6 +511,13 @@ kconfig_import_cache_variables("${KCONFIG_CONFIG_PREFIX}" KCONFIG_CACHE_CONFIGS)
 kconfig_create_fragment(KCONFIG_CACHE_CONFIGS "${KCONFIG_CONFIG_FRAGMENT_DIR}/cache.fragment")
 # TODO: Add merge of config fragments with defconfig
 
+# Import defconfig initially if dotconfig does not exist
+if(NOT EXISTS ${KCONFIG_DOTCONFIG_PATH})
+    kconfig_import_config("${KCONFIG_CONFIG_PREFIX}" "${KCONFIG_DEFCONFIG}" KCONFIG_KEYS ON)
+else()
+    kconfig_import_config("${KCONFIG_CONFIG_PREFIX}" "${KCONFIG_DOTCONFIG_PATH}" KCONFIG_KEYS ON)
+endif()
+
 # #######################################################################
 # kconfig_post_configure
 #
