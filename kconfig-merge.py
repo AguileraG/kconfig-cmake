@@ -77,7 +77,12 @@ class KconfigMerge:
         Imports a set of kconfig files to generate a tree of kconfig with adjusted
         source paths wre to the common dir of all kconfig paths
         """
-        self.common_dir = os.path.commonpath(sources)
+        if(len(sources) > 1):
+            self.common_dir = os.path.commonpath(sources)
+        else:
+            # This really isn't a nice way to to do this :(
+            self.common_dir = os.path.abspath(os.path.dirname(os.path.join(sources[0], "../../..")))
+
         with open(self.kconfig_root, 'w') as kconfig_root:
             # write headers
             for header in self.headers:
