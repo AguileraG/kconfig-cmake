@@ -85,6 +85,42 @@ macro(kconfig_find_bin paths name bin)
 endmacro()
 
 # #######################################################################
+# kconfig_get_option
+#
+# Checks if the kconfig conf binary supports needed options
+# paths: program path to conf
+function(kconfig_get_option path option _option)
+    message(CHECK_START "Checking kconfig targets")
+    set(_TARGET_menuconfig menuconfig)
+    set(_TARGET_savedefconfig savedefconfig)
+    set(_TARGET_defconfig defconfig)
+    set(_TARGET_oldconfig syncconfig silentoldconfig oldconfig)
+    set(_TARGET_allyesconfig allyesconfig)
+    set(_TARGET_allnoconfig allnoconfig)
+    set(_TARGET_allmodconfig allmodconfig)
+    set(_TARGET_alldefconfig alldefconfig)
+
+    if(NOT _TARGET_${option})
+        message(FATAL_ERROR "Invalid kconfig option")
+    endif()
+
+    execute_process(COMMAND ${path} --help
+        OUTPUT_VARIABLE help_string)
+
+    foreach(opt ${_TARGET_${option}})
+        string(FIND "${help_string}" "--${opt}" _TARGET_${option}_FOUND)
+        if(NOT ${_TARGET_${option}_FOUND} EQUAL -1)
+            set(${_option} ${opt} PARENT_SCOPE)
+            set(${_option}_FOUND 1 PARENT_SCOPE)
+            return()
+        endif()
+    endforeach()
+    message(DEBUG "kconfig tool does not support option: ${option}")
+    unset(${_option} PARENT_SCOPE)
+    unset(${_option}_FOUND PARENT_SCOPE)
+endfunction()
+
+# #######################################################################
 # kconfig_build_tools <build_dir>
 #
 # Builds the needed tools by kconfig
@@ -100,6 +136,7 @@ function(kconfig_build_tools repo_link build_dir)
         # clone kbuild-standalone
         execute_process(
             COMMAND ${GIT_EXECUTABLE} clone --depth 1 ${repo_link} ${_build_dir}
+            OUTPUT_QUIET ERROR_QUIET
             WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
             RESULT_VARIABLE ret)
         if(NOT "${ret}" STREQUAL "0")
@@ -110,6 +147,7 @@ function(kconfig_build_tools repo_link build_dir)
     # create output dir
     execute_process(
         COMMAND ${CMAKE_COMMAND} -E make_directory "${build_dir}"
+        OUTPUT_QUIET ERROR_QUIET
         WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
         RESULT_VARIABLE ret)
     if(NOT "${ret}" STREQUAL "0")
@@ -119,6 +157,7 @@ function(kconfig_build_tools repo_link build_dir)
     # build tools
     execute_process(
         COMMAND make -f ${_build_dir}/Makefile.sample O=${build_dir} -j
+        OUTPUT_QUIET ERROR_QUIET
         WORKING_DIRECTORY "${_build_dir}"
         RESULT_VARIABLE ret)
     if(NOT "${ret}" STREQUAL "0")
@@ -128,6 +167,7 @@ function(kconfig_build_tools repo_link build_dir)
     # clean up kbuild sources
     execute_process(
         COMMAND ${CMAKE_COMMAND} -E rm -r "${_build_dir}"
+        OUTPUT_QUIET ERROR_QUIET
         WORKING_DIRECTORY "${KCONFIG_BINARY_DIR}"
         RESULT_VARIABLE ret)
     if(NOT "${ret}" STREQUAL "0")
@@ -153,23 +193,30 @@ function(kconfig_defconfig kconfig_file defconfig dotconfig autoheader autoconf 
     message(DEBUG "\t KCONFIG_AUTOHEADER: ${autoheader}")
     message(DEBUG "\t KCONFIG_AUTOCONFIG: ${autoconf}")
     message(DEBUG "\t KCONFIG_TRISTATE:   ${tristate}")
-    execute_process(COMMAND
-        ${CMAKE_COMMAND} -E env
-        KCONFIG_AUTOHEADER=${autoheader}
-        KCONFIG_AUTOCONFIG=${autoconf}
-        KCONFIG_TRISTATE=${tristate}
-        KCONFIG_CONFIG=${dotconfig}
-        CONFIG_=${KCONFIG_CONFIG_PREFIX}
-        ${KCONFIG_CONF_BIN}
-        -s
-        --defconfig ${defconfig}
-        ${kconfig_file}
-        WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
-        RESULT_VARIABLE ret
-    )
 
-    if(NOT "${ret}" STREQUAL "0")
-        message(FATAL_ERROR "could not create initial .config: ${ret}")
+    kconfig_get_option(${KCONFIG_CONF_BIN} defconfig KCONFIG_DEFCONFIG_OPT)
+    message(DEBUG "Using ${KCONFIG_DEFCONFIG_OPT} for kconfig_defconfig")
+    if(KCONFIG_DEFCONFIG_OPT_FOUND)
+        execute_process(COMMAND
+            ${CMAKE_COMMAND} -E env
+            KCONFIG_AUTOHEADER=${autoheader}
+            KCONFIG_AUTOCONFIG=${autoconf}
+            KCONFIG_TRISTATE=${tristate}
+            KCONFIG_CONFIG=${dotconfig}
+            CONFIG_=${KCONFIG_CONFIG_PREFIX}
+            ${KCONFIG_CONF_BIN}
+            -s
+            --${KCONFIG_DEFCONFIG_OPT} ${defconfig}
+            ${kconfig_file}
+            WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
+            RESULT_VARIABLE ret
+        )
+
+        if(NOT "${ret}" STREQUAL "0")
+            message(FATAL_ERROR "could not create initial .config: ${ret}")
+        endif()
+    else()
+        message(FATAL_ERROR "kconfig tool does not support required option: defconfig")
     endif()
 endfunction()
 
@@ -367,6 +414,10 @@ function(kconfig_oldconfig kconfig_file dotconfig autoheader autoconf tristate)
     message(DEBUG "\t KCONFIG_AUTOCONFIG: ${autoconf}")
     message(DEBUG "\t KCONFIG_TRISTATE:   ${tristate}")
 
+    # Add allyesconfig
+    kconfig_get_option(${KCONFIG_CONF_BIN} oldconfig KCONFIG_OLDCONFIG_OPT)
+    message(DEBUG "Using ${KCONFIG_OLDCONFIG_OPT} for kconfig_oldconfig")
+    if(KCONFIG_SAVEDEFCONFIG_OPT_FOUND)
     execute_process(COMMAND
         ${CMAKE_COMMAND} -E env
         KCONFIG_AUTOHEADER=${autoheader}
@@ -375,11 +426,14 @@ function(kconfig_oldconfig kconfig_file dotconfig autoheader autoconf tristate)
         KCONFIG_CONFIG=${dotconfig}
         CONFIG_=${KCONFIG_CONFIG_PREFIX}
         ${KCONFIG_CONF_BIN}
-        --syncconfig
+            --${KCONFIG_OLDCONFIG_OPT}
         ${kconfig_file}
         WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
         RESULT_VARIABLE ret
     )
+    else()
+        message(FATAL_ERROR "kconfig tool does not support required option: oldconfig")
+    endif()
 
     if(NOT "${ret}" STREQUAL "0")
         message(FATAL_ERROR "could not generate config header: ${ret}")
@@ -476,6 +530,8 @@ add_custom_target(
 )
 
 # Add savedefconfig target
+kconfig_get_option(${KCONFIG_CONF_BIN} savedefconfig KCONFIG_SAVEDEFCONFIG_OPT)
+if(KCONFIG_SAVEDEFCONFIG_OPT_FOUND)
 add_custom_target(
     savedefconfig
     COMMAND ${CMAKE_COMMAND} -E echo "Saving defconfig to ${KCONFIG_DEFCONFIG}"
@@ -486,11 +542,102 @@ add_custom_target(
     KCONFIG_CONFIG=${KCONFIG_DOTCONFIG_PATH}
     CONFIG_=${KCONFIG_CONFIG_PREFIX}
     ${KCONFIG_CONF_BIN}
-    --savedefconfig ${KCONFIG_DEFCONFIG}
+        --${KCONFIG_SAVEDEFCONFIG_OPT} ${KCONFIG_DEFCONFIG}
+        ${KCONFIG_MERGED_KCONFIG_PATH}
+        WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
+        USES_TERMINAL
+    )
+else()
+    message(FATAL_ERROR "kconfig tool does not support required option: savedefconfig")
+endif()
+
+# Add allyesconfig target
+kconfig_get_option(${KCONFIG_CONF_BIN} allyesconfig KCONFIG_ALLYESCONFIG_OPT)
+if(KCONFIG_ALLYESCONFIG_OPT_FOUND)
+    add_custom_target(
+        allyesconfig
+        COMMAND ${CMAKE_COMMAND} -E echo "Saving defconfig to ${KCONFIG_DEFCONFIG}"
+        COMMAND ${CMAKE_COMMAND} -E env
+        KCONFIG_AUTOHEADER=${KCONFIG_AUTOHEADER_PATH}
+        KCONFIG_AUTOCONFIG=${KCONFIG_AUTOCONFIG_PATH}
+        KCONFIG_TRISTATE=${KCONFIG_TRISTATE_PATH}
+        KCONFIG_CONFIG=${KCONFIG_DOTCONFIG_PATH}
+        CONFIG_=${KCONFIG_CONFIG_PREFIX}
+        ${KCONFIG_CONF_BIN}
+        --${KCONFIG_ALLYESCONFIG_OPT}
+        ${KCONFIG_MERGED_KCONFIG_PATH}
+        WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
+        USES_TERMINAL
+    )
+else()
+    message(STATUS "kconfig tool does not support option: allyesconfig")
+endif()
+
+# Add allmodconfig target
+kconfig_get_option(${KCONFIG_CONF_BIN} allnoconfig KCONFIG_ALLNOCONFIG_OPT)
+if(KCONFIG_ALLNOCONFIG_OPT_FOUND)
+    add_custom_target(
+        allnoconfig
+        COMMAND ${CMAKE_COMMAND} -E echo "Saving defconfig to ${KCONFIG_DEFCONFIG}"
+        COMMAND ${CMAKE_COMMAND} -E env
+        KCONFIG_AUTOHEADER=${KCONFIG_AUTOHEADER_PATH}
+        KCONFIG_AUTOCONFIG=${KCONFIG_AUTOCONFIG_PATH}
+        KCONFIG_TRISTATE=${KCONFIG_TRISTATE_PATH}
+        KCONFIG_CONFIG=${KCONFIG_DOTCONFIG_PATH}
+        CONFIG_=${KCONFIG_CONFIG_PREFIX}
+        ${KCONFIG_CONF_BIN}
+        --${KCONFIG_ALLNOCONFIG_OPT}
+        ${KCONFIG_MERGED_KCONFIG_PATH}
+        WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
+        USES_TERMINAL
+    )
+else()
+    message(STATUS "kconfig tool does not support option: allnoconfig")
+endif()
+
+# Add allmodconfig target
+kconfig_get_option(${KCONFIG_CONF_BIN} allmodconfig KCONFIG_ALLMODCONFIG_OPT)
+if(KCONFIG_ALLMODCONFIG_OPT_FOUND)
+    add_custom_target(
+        allmodconfig
+        COMMAND ${CMAKE_COMMAND} -E echo "Saving defconfig to ${KCONFIG_DEFCONFIG}"
+        COMMAND ${CMAKE_COMMAND} -E env
+        KCONFIG_AUTOHEADER=${KCONFIG_AUTOHEADER_PATH}
+        KCONFIG_AUTOCONFIG=${KCONFIG_AUTOCONFIG_PATH}
+        KCONFIG_TRISTATE=${KCONFIG_TRISTATE_PATH}
+        KCONFIG_CONFIG=${KCONFIG_DOTCONFIG_PATH}
+        CONFIG_=${KCONFIG_CONFIG_PREFIX}
+        ${KCONFIG_CONF_BIN}
+        --${KCONFIG_ALLMODCONFIG_OPT}
+        ${KCONFIG_MERGED_KCONFIG_PATH}
+        WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
+        USES_TERMINAL
+    )
+else()
+    message(STATUS "kconfig tool does not support option: allmodconfig")
+endif()
+
+# Add alldefconfig target
+kconfig_get_option(${KCONFIG_CONF_BIN} alldefconfig KCONFIG_ALLDEFCONFIG_OPT)
+if(KCONFIG_ALLDEFCONFIG_OPT_FOUND)
+    add_custom_target(
+        alldefconfig
+        COMMAND ${CMAKE_COMMAND} -E echo "Saving defconfig to ${KCONFIG_DEFCONFIG}"
+        COMMAND ${CMAKE_COMMAND} -E env
+        KCONFIG_AUTOHEADER=${KCONFIG_AUTOHEADER_PATH}
+        KCONFIG_AUTOCONFIG=${KCONFIG_AUTOCONFIG_PATH}
+        KCONFIG_TRISTATE=${KCONFIG_TRISTATE_PATH}
+        KCONFIG_CONFIG=${KCONFIG_DOTCONFIG_PATH}
+        CONFIG_=${KCONFIG_CONFIG_PREFIX}
+        ${KCONFIG_CONF_BIN}
+        --${KCONFIG_ALLDEFCONFIG_OPT}
     ${KCONFIG_MERGED_KCONFIG_PATH}
     WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
     USES_TERMINAL
 )
+else()
+    message(STATUS "kconfig tool does not support option: alldefconfig")
+endif()
 
 # dummy target to sanity check kconfig generated files
 add_custom_target(kconfig_sanity
