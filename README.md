@@ -1,4 +1,5 @@
 # kconfig-cmake
+
 # Usage
 
 Copy or add this repository as submodule into the project directory then include `Kconfig.cmake` in the root cmake file. Use the following functions to setup the kconfig environment
@@ -59,6 +60,12 @@ This script also generates a c header that can be preincluded to targets by sett
 - `KCONFIG_NO_BUILD_TOOLS`
   - If `ON`, will not build kconfig binary tools if not found
   - DEFAULT: `OFF`
+
+# Dependencies
+
+This script requires kconfig binaries (`conf` and `mconf`). 
+The binaries can be built standalone using this repository: `https://github.com/WangNan0/kbuild-standalone`
+If binaries are not installed to PATH, set `KCONFIG_KBUILD_DIR` cmake option.
 
 # Sample
 
