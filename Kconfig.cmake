@@ -305,6 +305,23 @@ function(kconfig_import_cache_variables config_prefix)
 endfunction()
 
 # #######################################################################
+# kconfig_split_config <in> <name> <value>
+#
+# Parse input string and split config to name and value
+# in: config string 
+# name: variable name to store name
+# value: variable name to store value
+function(kconfig_split_config in name value)
+    
+    if("${in}" MATCHES "^([^=]+)=(.+)$")
+        set(${name} ${CMAKE_MATCH_1} PARENT_SCOPE)
+        set(${value} ${CMAKE_MATCH_2} PARENT_SCOPE)
+    else()
+        message(FATAL_ERROR "Could not parse config string: ${in}")
+    endif()
+endfunction()
+
+# #######################################################################
 # kconfig_parse_defconfig <config_prefix> <config_file> <config_list> <cache>
 #
 # Parse kconfig defconfig and store to global property KCONFIG_KEYS
@@ -323,6 +340,9 @@ function(kconfig_import_config config_prefix config_file config_list cache)
     message(DEBUG "   config_list:   ${config_list}")
     message(DEBUG "   cache:         ${cache}")
     file(STRINGS ${config_file} DEFCONFIG_LIST)
+
+    # clear property
+    set_property(GLOBAL PROPERTY KCONFIG_KEYS )
 
     foreach(CONFIG ${DEFCONFIG_LIST})
         # each CONFIG line should look like: <PREFIX>_OPTION=y
@@ -353,10 +373,8 @@ function(kconfig_import_config config_prefix config_file config_list cache)
 
         # add to list
         list(APPEND CONFIG_DEFCONFIG_LIST "${CONFIG_NAME}")
+        set_property(GLOBAL APPEND PROPERTY KCONFIG_KEYS "${CONFIG_NAME}=${CONFIG_VALUE}")
     endforeach()
-
-    # update keys property
-    set_property(GLOBAL PROPERTY KCONFIG_KEYS ${CONFIG_DEFCONFIG_LIST})
 
     if(KCONFIG_USE_VARIABLES)
         # set config list
@@ -415,7 +433,9 @@ function(kconfig_configure_targets config_keys)
 
     foreach(tgt ${_kconfig_targets})
         foreach(key ${_keys})
-            set_target_properties(${tgt} PROPERTIES ${key} ${${key}})
+            kconfig_split_config("${key}" name value)
+            message( STATUS "${name} ${value}")
+            set_target_properties(${tgt} PROPERTIES ${name} ${value})
         endforeach()
 
         # if preinclude is enabled
@@ -469,20 +489,19 @@ function(kconfig_oldconfig kconfig_file dotconfig autoheader autoconf tristate)
 endfunction()
 
 # #######################################################################
-# kconfig_print_configs <config_list>
+# kconfig_print_configs
 #
-# Print all configs
-# config_list: list storing cache config key=value
-function(kconfig_print_configs config_list)
+# Print all configs stored in global property KCONFIG_KEYS
+function(kconfig_print_configs)
     message(DEBUG "kconfig_print_configs:")
-    message(DEBUG "\t config_list:  ${config_list}")
 
-    get_property(_keys GLOBAL PROPERTY ${config_list})
+    get_property(_keys GLOBAL PROPERTY KCONFIG_KEYS)
 
     message(STATUS "Kconfig final config list")
 
     foreach(key ${_keys})
-        message(STATUS "\t ${key}: ${${key}}")
+        kconfig_split_config("${key}" name value)
+        message(STATUS "\t ${name}: ${value}")
     endforeach()
 endfunction()
 
@@ -759,7 +778,7 @@ macro(kconfig_post_configure)
     kconfig_configure_targets(KCONFIG_KEYS)
 
     # print configs
-    kconfig_print_configs(KCONFIG_KEYS)
+    kconfig_print_configs()
 endmacro()
 
 # Add deferred call to kconfig_post_configure
