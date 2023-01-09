@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 include_guard(GLOBAL)
+
 if(__KCONFIG_CMAKE_INCLUDE_GUARD__)
     return()
 endif()
+
 set(__KCONFIG_CMAKE_INCLUDE_GUARD__ TRUE)
 
 # Minimum version
@@ -12,6 +14,7 @@ cmake_minimum_required(VERSION 3.19)
 
 # Module needs git
 find_package(Git)
+
 if(NOT GIT_FOUND)
     message(FATAL_ERROR "Could not find Git")
 endif()
@@ -66,7 +69,7 @@ macro(kconfig_find_bin paths name bin)
     message(CHECK_START "Finding ${bin}")
 
     if(NOT ${name})
-        find_program(${name} NAMES ${bin} ${ARGN} PATHS ${paths} HINTS ${paths} )
+        find_program(${name} NAMES ${bin} ${ARGN} PATHS ${paths} HINTS ${paths})
 
         if(NOT ${name})
             set(${name}_FOUND 0)
@@ -109,12 +112,14 @@ function(kconfig_get_option path option _option)
 
     foreach(opt ${_TARGET_${option}})
         string(FIND "${help_string}" "--${opt}" _TARGET_${option}_FOUND)
+
         if(NOT ${_TARGET_${option}_FOUND} EQUAL -1)
             set(${_option} ${opt} PARENT_SCOPE)
             set(${_option}_FOUND 1 PARENT_SCOPE)
             return()
         endif()
     endforeach()
+
     message(DEBUG "kconfig tool does not support option: ${option}")
     unset(${_option} PARENT_SCOPE)
     unset(${_option}_FOUND PARENT_SCOPE)
@@ -126,7 +131,6 @@ endfunction()
 # Builds the needed tools by kconfig
 # build_dir: directory to place tools
 function(kconfig_build_tools repo_link build_dir)
-
     message(DEBUG "kconfig_build_tools")
     message(DEBUG "   build_dir: ${build_dir}")
     message(DEBUG "   git_repo:  ${repo_link}")
@@ -139,6 +143,7 @@ function(kconfig_build_tools repo_link build_dir)
             OUTPUT_QUIET ERROR_QUIET
             WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
             RESULT_VARIABLE ret)
+
         if(NOT "${ret}" STREQUAL "0")
             message(FATAL_ERROR "Could not clone kbuild-standalone: ${ret}")
         endif()
@@ -150,6 +155,7 @@ function(kconfig_build_tools repo_link build_dir)
         OUTPUT_QUIET ERROR_QUIET
         WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
         RESULT_VARIABLE ret)
+
     if(NOT "${ret}" STREQUAL "0")
         message(FATAL_ERROR "Could not build kbuild-standalone: ${ret}")
     endif()
@@ -160,6 +166,7 @@ function(kconfig_build_tools repo_link build_dir)
         OUTPUT_QUIET ERROR_QUIET
         WORKING_DIRECTORY "${_build_dir}"
         RESULT_VARIABLE ret)
+
     if(NOT "${ret}" STREQUAL "0")
         message(FATAL_ERROR "Could not build kbuild-standalone: ${ret}")
     endif()
@@ -170,6 +177,7 @@ function(kconfig_build_tools repo_link build_dir)
         OUTPUT_QUIET ERROR_QUIET
         WORKING_DIRECTORY "${KCONFIG_BINARY_DIR}"
         RESULT_VARIABLE ret)
+
     if(NOT "${ret}" STREQUAL "0")
         message(FATAL_ERROR "Could not build kbuild-standalone: ${ret}")
     endif()
@@ -196,6 +204,7 @@ function(kconfig_defconfig kconfig_file defconfig dotconfig autoheader autoconf 
 
     kconfig_get_option(${KCONFIG_CONF_BIN} defconfig KCONFIG_DEFCONFIG_OPT)
     message(DEBUG "Using ${KCONFIG_DEFCONFIG_OPT} for kconfig_defconfig")
+
     if(KCONFIG_DEFCONFIG_OPT_FOUND)
         execute_process(COMMAND
             ${CMAKE_COMMAND} -E env
@@ -251,47 +260,55 @@ function(kconfig_merge_kconfigs merged_path source_var)
 endfunction()
 
 # #######################################################################
-# kconfig_create_fragment <config_list> <cache_fragment>
-# 
+# kconfig_create_cache_fragment <cache_fragment>
+#
 # Parse cmake cache variables for cli given kconfig settings
-# config_list: list storing cache config key=value
+# retrieves cache fragments from global property: KCONFIG_CACHE_CONFIGS
 # cache_fragment file to write config fragment
-# 
-function(kconfig_create_fragment config_list cache_fragment)
+#
+function(kconfig_create_cache_fragment cache_fragment)
     message(STATUS "Generating cache kconfig fragment: ${cache_fragment}")
     message(DEBUG "kconfig_create_fragment:")
     message(DEBUG "\t config_list:  ${config_list}")
     message(DEBUG "\t cache_fragment: ${cache_fragment}")
 
-    file(WRITE ${cache_fragment} ${${config_list}})
+    get_property(_configs GLOBAL PROPERTY KCONFIG_CACHE_CONFIGS)
+
+    file(WRITE ${cache_fragment} "${_configs}")
 endfunction()
 
 # #######################################################################
 # kconfig_import_cache_variables <config_prefix> <cache_fragment> <config_list>
 #
 # Parse cmake cache variables for cli given kconfig settings
+# kconfig cache keys are stored in global property: KCONFIG_CACHE_CONFIGS
 # config_prefix config prefix
 # config_list: variable store cache config keys
-function(kconfig_import_cache_variables config_prefix config_list)
+function(kconfig_import_cache_variables config_prefix)
     message(DEBUG "kconfig_import_cache_variables:")
     message(DEBUG "\t config_prefix:  ${config_prefix}")
     get_cmake_property(cache_variables CACHE_VARIABLES)
 
     foreach(var ${cache_variables})
         if("${var}" MATCHES "^${config_prefix}")
+            message(STATUS "CACHE_FRAGMENT: ${var}")
             list(APPEND _kconfig_cache "${var}=${${var}}\n")
-            # unset the cache config, will create a config fragment instead
-            unset(${var} CACHE)
+
+            if(KCONFIG_USE_VARIABLES)
+                # unset the cache config, will create a config fragment instead
+                unset(${var} CACHE)
+            endif()
         endif()
     endforeach()
 
-    set(${config_list} ${_kconfig_cache} PARENT_SCOPE)
+    set_property(GLOBAL PROPERTY KCONFIG_CACHE_CONFIGS ${_kconfig_cache})
 endfunction()
 
 # #######################################################################
 # kconfig_parse_defconfig <config_prefix> <config_file> <config_list> <cache>
 #
-# Parse kconfig defconfig and import all config to cmake variable namespace
+# Parse kconfig defconfig and store to global property KCONFIG_KEYS
+# import all config to cmake variable namespace
 # config_prefix config prefix in file
 # config_file file to parse
 # config_list will contain all configs parsed from file
@@ -330,20 +347,28 @@ function(kconfig_import_config config_prefix config_file config_list cache)
             set(CONFIG_VALUE OFF)
         endif()
 
-        set("${CONFIG_NAME}" ${CONFIG_VALUE} PARENT_SCOPE)
+        if(KCONFIG_USE_VARIABLES)
+            set("${CONFIG_NAME}" ${CONFIG_VALUE} PARENT_SCOPE)
+        endif()
 
         # add to list
         list(APPEND CONFIG_DEFCONFIG_LIST "${CONFIG_NAME}")
     endforeach()
 
-    # # set config list
-    set(${config_list} ${CONFIG_DEFCONFIG_LIST} PARENT_SCOPE)
+    # update keys property
+    set_property(GLOBAL PROPERTY KCONFIG_KEYS ${CONFIG_DEFCONFIG_LIST})
+
+    if(KCONFIG_USE_VARIABLES)
+        # set config list
+        set(${config_list} ${CONFIG_DEFCONFIG_LIST} PARENT_SCOPE)
+    endif()
 endfunction()
 
 # #######################################################################
 # kconfig_add_kconfig <kconfig_file>
 #
 # add kconfig file to project
+# Stores list of all kconfigs to global property: KCONFIG_CONFIG_SOURCES
 # kconfig_file: path to kconfig file to add
 function(kconfig_add_kconfig kconfig_file)
     message(DEBUG "kconfig_add_kconfig")
@@ -379,15 +404,17 @@ endfunction()
 # kconfig_configure_targets <config_keys>
 #
 # setup target with kconfig
+# keys are retrieved from global property: KCONFIG_KEYS
 # keys to configure targets: target to configure
 function(kconfig_configure_targets config_keys)
     message(DEBUG "kconfig_configure_targets")
     message(DEBUG "   config_keys:   ${config_keys}")
     get_property(_kconfig_targets GLOBAL PROPERTY KCONFIG_TARGETS)
+    get_property(_keys GLOBAL PROPERTY KCONFIG_KEYS)
     message(DEBUG "   targets:   ${_kconfig_targets}")
 
     foreach(tgt ${_kconfig_targets})
-        foreach(key ${KCONFIG_KEYS})
+        foreach(key ${_keys})
             set_target_properties(${tgt} PROPERTIES ${key} ${${key}})
         endforeach()
 
@@ -417,20 +444,21 @@ function(kconfig_oldconfig kconfig_file dotconfig autoheader autoconf tristate)
     # Add allyesconfig
     kconfig_get_option(${KCONFIG_CONF_BIN} oldconfig KCONFIG_OLDCONFIG_OPT)
     message(DEBUG "Using ${KCONFIG_OLDCONFIG_OPT} for kconfig_oldconfig")
+
     if(KCONFIG_SAVEDEFCONFIG_OPT_FOUND)
-    execute_process(COMMAND
-        ${CMAKE_COMMAND} -E env
-        KCONFIG_AUTOHEADER=${autoheader}
-        KCONFIG_AUTOCONFIG=${autoconf}
-        KCONFIG_TRISTATE=${tristate}
-        KCONFIG_CONFIG=${dotconfig}
-        CONFIG_=${KCONFIG_CONFIG_PREFIX}
-        ${KCONFIG_CONF_BIN}
+        execute_process(COMMAND
+            ${CMAKE_COMMAND} -E env
+            KCONFIG_AUTOHEADER=${autoheader}
+            KCONFIG_AUTOCONFIG=${autoconf}
+            KCONFIG_TRISTATE=${tristate}
+            KCONFIG_CONFIG=${dotconfig}
+            CONFIG_=${KCONFIG_CONFIG_PREFIX}
+            ${KCONFIG_CONF_BIN}
             --${KCONFIG_OLDCONFIG_OPT}
-        ${kconfig_file}
-        WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
-        RESULT_VARIABLE ret
-    )
+            ${kconfig_file}
+            WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
+            RESULT_VARIABLE ret
+        )
     else()
         message(FATAL_ERROR "kconfig tool does not support required option: oldconfig")
     endif()
@@ -438,6 +466,24 @@ function(kconfig_oldconfig kconfig_file dotconfig autoheader autoconf tristate)
     if(NOT "${ret}" STREQUAL "0")
         message(FATAL_ERROR "could not generate config header: ${ret}")
     endif()
+endfunction()
+
+# #######################################################################
+# kconfig_print_configs <config_list>
+#
+# Print all configs
+# config_list: list storing cache config key=value
+function(kconfig_print_configs config_list)
+    message(DEBUG "kconfig_print_configs:")
+    message(DEBUG "\t config_list:  ${config_list}")
+
+    get_property(_keys GLOBAL PROPERTY ${config_list})
+
+    message(STATUS "Kconfig final config list")
+
+    foreach(key ${_keys})
+        message(STATUS "\t ${key}: ${${key}}")
+    endforeach()
 endfunction()
 
 # #######################################################################
@@ -450,12 +496,14 @@ kconfig_default_variable(KCONFIG_KBUILD_DIR "${KCONFIG_BINARY_DIR}/tools")
 kconfig_default_variable(KCONFIG_CONFIGS_DIR "${CMAKE_SOURCE_DIR}/configs")
 kconfig_default_variable(KCONFIG_CONFIG_PREFIX "CONFIG_")
 kconfig_default_variable(KCONFIG_CONFIG_FRAGMENT_DIR "${KCONFIG_BINARY_DIR}/fragments")
-kconfig_default_variable(KCONFIG_TRISTATE_PATH "${KCONFIG_BINARY_DIR}/include/config/tristate.conf")
-kconfig_default_variable(KCONFIG_AUTOCONFIG_PATH "${KCONFIG_BINARY_DIR}/include/config/auto.conf")
-kconfig_default_variable(KCONFIG_AUTOHEADER_PATH "${KCONFIG_BINARY_DIR}/include/generated/config.h")
+kconfig_default_variable(KCONFIG_INCLUDE_PATH "${KCONFIG_BINARY_DIR}/include")
+kconfig_default_variable(KCONFIG_TRISTATE_PATH "${KCONFIG_INCLUDE_PATH}/config/tristate.conf")
+kconfig_default_variable(KCONFIG_AUTOCONFIG_PATH "${KCONFIG_INCLUDE_PATH}/config/auto.conf")
+kconfig_default_variable(KCONFIG_AUTOHEADER_PATH "${KCONFIG_INCLUDE_PATH}/generated/config.h")
 kconfig_default_variable(KCONFIG_MERGED_KCONFIG_PATH "${KCONFIG_BINARY_DIR}/Kconfig")
 kconfig_default_variable(KCONFIG_DOTCONFIG_PATH "${KCONFIG_BINARY_DIR}/.config")
 kconfig_default_variable(KCONFIG_PREINCLUDE_AUTOCONF ON)
+kconfig_default_variable(KCONFIG_USE_VARIABLES OFF)
 kconfig_default_variable(KCONFIG_NO_BUILD_TOOLS OFF)
 kconfig_default_variable(KBUILD_STANDALONE_GIT_REPO "https://github.com/ccvelandres/kbuild-standalone")
 
@@ -469,19 +517,19 @@ kconfig_make_directory(KCONFIG_MERGED_KCONFIG_PATH)
 kconfig_make_directory(KCONFIG_DOTCONFIG_PATH)
 
 # Search for kconfig-* binaries
-kconfig_find_bin("${KCONFIG_KBUILD_DIR}" KCONFIG_CONF_BIN kconfig-conf conf )
-kconfig_find_bin("${KCONFIG_KBUILD_DIR}" KCONFIG_MCONF_BIN kconfig-mconf mconf )
+kconfig_find_bin("${KCONFIG_KBUILD_DIR}" KCONFIG_CONF_BIN kconfig-conf conf)
+kconfig_find_bin("${KCONFIG_KBUILD_DIR}" KCONFIG_MCONF_BIN kconfig-mconf mconf)
 
 # Check if binaries are found
-if(NOT KCONFIG_CONF_BIN_FOUND OR NOT KCONFIG_MCONF_BIN_FOUND )
+if(NOT KCONFIG_CONF_BIN_FOUND OR NOT KCONFIG_MCONF_BIN_FOUND)
     if(KCONFIG_NO_BUILD_TOOLS)
         message(FATAL_ERROR "Kconfig binaries not found, try setting KCONFIG_KBUILD_DIR")
     else()
         message(WARNING "Kconfig binaries not found, try setting KCONFIG_KBUILD_DIR")
         message(STATUS "Trying to build tools...")
         kconfig_build_tools("${KBUILD_STANDALONE_GIT_REPO}" ${KCONFIG_KBUILD_DIR})
-        kconfig_find_bin("${KCONFIG_KBUILD_DIR}/kconfig" KCONFIG_CONF_BIN conf )
-        kconfig_find_bin("${KCONFIG_KBUILD_DIR}/kconfig" KCONFIG_MCONF_BIN mconf )
+        kconfig_find_bin("${KCONFIG_KBUILD_DIR}/kconfig" KCONFIG_CONF_BIN conf)
+        kconfig_find_bin("${KCONFIG_KBUILD_DIR}/kconfig" KCONFIG_MCONF_BIN mconf)
     endif()
 endif()
 
@@ -508,7 +556,8 @@ if(KCONFIG_PREINCLUDE_AUTOCONF)
     message(STATUS "Preincluding autoconf header to kconfig targets...")
 endif()
 
-include_directories("${KCONFIG_BINARY_DIR}/include")
+# Add kconfig include dir to include directories
+include_directories("${KCONFIG_INCLUDE_PATH}")
 
 # Set KConfig binary paths
 set(KCONFIG_BIN_MCONF "")
@@ -531,17 +580,18 @@ add_custom_target(
 
 # Add savedefconfig target
 kconfig_get_option(${KCONFIG_CONF_BIN} savedefconfig KCONFIG_SAVEDEFCONFIG_OPT)
+
 if(KCONFIG_SAVEDEFCONFIG_OPT_FOUND)
-add_custom_target(
-    savedefconfig
-    COMMAND ${CMAKE_COMMAND} -E echo "Saving defconfig to ${KCONFIG_DEFCONFIG}"
-    COMMAND ${CMAKE_COMMAND} -E env
-    KCONFIG_AUTOHEADER=${KCONFIG_AUTOHEADER_PATH}
-    KCONFIG_AUTOCONFIG=${KCONFIG_AUTOCONFIG_PATH}
-    KCONFIG_TRISTATE=${KCONFIG_TRISTATE_PATH}
-    KCONFIG_CONFIG=${KCONFIG_DOTCONFIG_PATH}
-    CONFIG_=${KCONFIG_CONFIG_PREFIX}
-    ${KCONFIG_CONF_BIN}
+    add_custom_target(
+        savedefconfig
+        COMMAND ${CMAKE_COMMAND} -E echo "Saving defconfig to ${KCONFIG_DEFCONFIG}"
+        COMMAND ${CMAKE_COMMAND} -E env
+        KCONFIG_AUTOHEADER=${KCONFIG_AUTOHEADER_PATH}
+        KCONFIG_AUTOCONFIG=${KCONFIG_AUTOCONFIG_PATH}
+        KCONFIG_TRISTATE=${KCONFIG_TRISTATE_PATH}
+        KCONFIG_CONFIG=${KCONFIG_DOTCONFIG_PATH}
+        CONFIG_=${KCONFIG_CONFIG_PREFIX}
+        ${KCONFIG_CONF_BIN}
         --${KCONFIG_SAVEDEFCONFIG_OPT} ${KCONFIG_DEFCONFIG}
         ${KCONFIG_MERGED_KCONFIG_PATH}
         WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
@@ -553,6 +603,7 @@ endif()
 
 # Add allyesconfig target
 kconfig_get_option(${KCONFIG_CONF_BIN} allyesconfig KCONFIG_ALLYESCONFIG_OPT)
+
 if(KCONFIG_ALLYESCONFIG_OPT_FOUND)
     add_custom_target(
         allyesconfig
@@ -575,6 +626,7 @@ endif()
 
 # Add allmodconfig target
 kconfig_get_option(${KCONFIG_CONF_BIN} allnoconfig KCONFIG_ALLNOCONFIG_OPT)
+
 if(KCONFIG_ALLNOCONFIG_OPT_FOUND)
     add_custom_target(
         allnoconfig
@@ -597,6 +649,7 @@ endif()
 
 # Add allmodconfig target
 kconfig_get_option(${KCONFIG_CONF_BIN} allmodconfig KCONFIG_ALLMODCONFIG_OPT)
+
 if(KCONFIG_ALLMODCONFIG_OPT_FOUND)
     add_custom_target(
         allmodconfig
@@ -619,6 +672,7 @@ endif()
 
 # Add alldefconfig target
 kconfig_get_option(${KCONFIG_CONF_BIN} alldefconfig KCONFIG_ALLDEFCONFIG_OPT)
+
 if(KCONFIG_ALLDEFCONFIG_OPT_FOUND)
     add_custom_target(
         alldefconfig
@@ -631,10 +685,10 @@ if(KCONFIG_ALLDEFCONFIG_OPT_FOUND)
         CONFIG_=${KCONFIG_CONFIG_PREFIX}
         ${KCONFIG_CONF_BIN}
         --${KCONFIG_ALLDEFCONFIG_OPT}
-    ${KCONFIG_MERGED_KCONFIG_PATH}
-    WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
-    USES_TERMINAL
-)
+        ${KCONFIG_MERGED_KCONFIG_PATH}
+        WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
+        USES_TERMINAL
+    )
 else()
     message(STATUS "kconfig tool does not support option: alldefconfig")
 endif()
@@ -658,7 +712,8 @@ set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES "${KCONFIG_BINARY_
 
 # Convert to cache config variables to config fragment
 kconfig_import_cache_variables("${KCONFIG_CONFIG_PREFIX}" KCONFIG_CACHE_CONFIGS)
-kconfig_create_fragment(KCONFIG_CACHE_CONFIGS "${KCONFIG_CONFIG_FRAGMENT_DIR}/cache.fragment")
+kconfig_create_cache_fragment("${KCONFIG_CONFIG_FRAGMENT_DIR}/cache.fragment")
+
 # TODO: Add merge of config fragments with defconfig
 
 # Import defconfig initially if dotconfig does not exist
@@ -702,11 +757,9 @@ macro(kconfig_post_configure)
 
     # Configure targets
     kconfig_configure_targets(KCONFIG_KEYS)
-    message(STATUS "Kconfig final config list")
 
-    foreach(key ${KCONFIG_KEYS})
-        message(STATUS "\t ${key}: ${${key}}")
-    endforeach()
+    # print configs
+    kconfig_print_configs(KCONFIG_KEYS)
 endmacro()
 
 # Add deferred call to kconfig_post_configure

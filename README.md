@@ -39,21 +39,27 @@ This script also generates a c header that can be preincluded to targets by sett
 - `KCONFIG_CONFIG_FRAGMENT_DIR`
   - Path to binary config fragments
   - DEFAULT: `${KCONFIG_BINARY_DIR}/fragments`
+- `KCONFIG_INCLUDE_PATH`
+  - Path to include directory for generated headers
+  - DEFAULT: `${KCONFIG_BINARY_DIR}/include`
 - `KCONFIG_TRISTATE_PATH`
   - Path to create generated tristate file
-  - DEFAULT: `${KCONFIG_BINARY_DIR}/include/config/tristate.conf`
+  - DEFAULT: `${KCONFIG_INCLUDE_PATH}/config/tristate.conf`
 - `KCONFIG_AUTOCONFIG_PATH`
   - Path to create generated autoconf files
-  - DEFAULT: `${KCONFIG_BINARY_DIR}/include/config/auto.conf`
+  - DEFAULT: `${KCONFIG_INCLUDE_PATH}/config/auto.conf`
 - `KCONFIG_AUTOHEADER_PATH`
   - Path to create generated autoconf header
-  - DEFAULT: `${KCONFIG_BINARY_DIR}/include/generated/config.h`
+  - DEFAULT: `${KCONFIG_INCLUDE_PATH}/generated/config.h`
 - `KCONFIG_MERGED_KCONFIG_PATH`
   - Path to create generated root kconfig file for project
   - DEFAULT: `${KCONFIG_BINARY_DIR}/Kconfig`
 - `KCONFIG_DOTCONFIG_PATH`
   - Path to create .config file
   - DEFAULT: `${KCONFIG_BINARY_DIR}/.config`
+- `KCONFIG_USE_VARIABLES`
+  - Allow kconfig to import configs to cmake variables
+  - DEFAULT: `OFF`
 - `KCONFIG_PREINCLUDE_AUTOCONF`
   - Generate pre-compiled header and link to configured targets
   - DEFAULT: `ON`
