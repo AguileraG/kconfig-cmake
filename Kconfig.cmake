@@ -291,7 +291,6 @@ function(kconfig_import_cache_variables config_prefix)
 
     foreach(var ${cache_variables})
         if("${var}" MATCHES "^${config_prefix}")
-            message(STATUS "CACHE_FRAGMENT: ${var}")
             list(APPEND _kconfig_cache "${var}=${${var}}\n")
 
             if(KCONFIG_USE_VARIABLES)
@@ -434,7 +433,6 @@ function(kconfig_configure_targets config_keys)
     foreach(tgt ${_kconfig_targets})
         foreach(key ${_keys})
             kconfig_split_config("${key}" name value)
-            message( STATUS "${name} ${value}")
             set_target_properties(${tgt} PROPERTIES ${name} ${value})
         endforeach()
 
