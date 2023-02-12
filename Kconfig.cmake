@@ -93,7 +93,7 @@ endmacro()
 # Checks if the kconfig conf binary supports needed options
 # paths: program path to conf
 function(kconfig_get_option path option _option)
-    message(CHECK_START "Checking kconfig targets")
+    message(DEBUG "Checking kconfig targets")
     set(_TARGET_menuconfig menuconfig)
     set(_TARGET_savedefconfig savedefconfig)
     set(_TARGET_defconfig defconfig)
@@ -218,6 +218,7 @@ function(kconfig_defconfig kconfig_file defconfig dotconfig autoheader autoconf 
             --${KCONFIG_DEFCONFIG_OPT} ${defconfig}
             ${kconfig_file}
             WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
+            OUTPUT_QUIET ERROR_QUIET
             RESULT_VARIABLE ret
         )
 
@@ -251,6 +252,7 @@ function(kconfig_merge_kconfigs merged_path source_var)
         --title ${PROJECT_NAME}
         --sources ${kconfig_sources}
         WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
+        OUTPUT_QUIET ERROR_QUIET
         RESULT_VARIABLE ret
     )
 
@@ -459,11 +461,11 @@ function(kconfig_oldconfig kconfig_file dotconfig autoheader autoconf tristate)
     message(DEBUG "\t KCONFIG_AUTOCONFIG: ${autoconf}")
     message(DEBUG "\t KCONFIG_TRISTATE:   ${tristate}")
 
-    # Add allyesconfig
+    # Use oldconfig
     kconfig_get_option(${KCONFIG_CONF_BIN} oldconfig KCONFIG_OLDCONFIG_OPT)
     message(DEBUG "Using ${KCONFIG_OLDCONFIG_OPT} for kconfig_oldconfig")
 
-    if(KCONFIG_SAVEDEFCONFIG_OPT_FOUND)
+    if(KCONFIG_OLDCONFIG_OPT_FOUND)
         execute_process(COMMAND
             ${CMAKE_COMMAND} -E env
             KCONFIG_AUTOHEADER=${autoheader}
@@ -475,6 +477,7 @@ function(kconfig_oldconfig kconfig_file dotconfig autoheader autoconf tristate)
             --${KCONFIG_OLDCONFIG_OPT}
             ${kconfig_file}
             WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
+            OUTPUT_QUIET ERROR_QUIET
             RESULT_VARIABLE ret
         )
     else()
@@ -525,8 +528,7 @@ kconfig_default_variable(KCONFIG_NO_BUILD_TOOLS OFF)
 kconfig_default_variable(KBUILD_STANDALONE_GIT_REPO "https://github.com/ccvelandres/kbuild-standalone")
 
 # Create paths
-file(MAKE_DIRECTORY ${KCONFIG_BINARY_DIR})
-kconfig_make_directory(KCONFIG_CONFIG_FRAGMENT_DIR)
+file(MAKE_DIRECTORY ${KCONFIG_BINARY_DIR} ${KCONFIG_CONFIG_FRAGMENT_DIR})
 kconfig_make_directory(KCONFIG_TRISTATE_PATH)
 kconfig_make_directory(KCONFIG_AUTOCONFIG_PATH)
 kconfig_make_directory(KCONFIG_AUTOHEADER_PATH)
@@ -592,6 +594,7 @@ add_custom_target(
     ${KCONFIG_MCONF_BIN}
     ${KCONFIG_MERGED_KCONFIG_PATH}
     WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
+    OUTPUT_QUIET ERROR_QUIET
     USES_TERMINAL
 )
 
@@ -612,6 +615,7 @@ if(KCONFIG_SAVEDEFCONFIG_OPT_FOUND)
         --${KCONFIG_SAVEDEFCONFIG_OPT} ${KCONFIG_DEFCONFIG}
         ${KCONFIG_MERGED_KCONFIG_PATH}
         WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
+        OUTPUT_QUIET ERROR_QUIET
         USES_TERMINAL
     )
 else()
@@ -635,6 +639,7 @@ if(KCONFIG_ALLYESCONFIG_OPT_FOUND)
         --${KCONFIG_ALLYESCONFIG_OPT}
         ${KCONFIG_MERGED_KCONFIG_PATH}
         WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
+        OUTPUT_QUIET ERROR_QUIET
         USES_TERMINAL
     )
 else()
@@ -658,6 +663,7 @@ if(KCONFIG_ALLNOCONFIG_OPT_FOUND)
         --${KCONFIG_ALLNOCONFIG_OPT}
         ${KCONFIG_MERGED_KCONFIG_PATH}
         WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
+        OUTPUT_QUIET ERROR_QUIET
         USES_TERMINAL
     )
 else()
@@ -681,6 +687,7 @@ if(KCONFIG_ALLMODCONFIG_OPT_FOUND)
         --${KCONFIG_ALLMODCONFIG_OPT}
         ${KCONFIG_MERGED_KCONFIG_PATH}
         WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
+        OUTPUT_QUIET ERROR_QUIET
         USES_TERMINAL
     )
 else()
@@ -704,6 +711,7 @@ if(KCONFIG_ALLDEFCONFIG_OPT_FOUND)
         --${KCONFIG_ALLDEFCONFIG_OPT}
         ${KCONFIG_MERGED_KCONFIG_PATH}
         WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
+        OUTPUT_QUIET ERROR_QUIET
         USES_TERMINAL
     )
 else()
@@ -722,7 +730,6 @@ add_custom_target(kconfig_sanity
 # Reconfigure cmake when config changes
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${KCONFIG_DEFCONFIG}")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${KCONFIG_DOTCONFIG_PATH}")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${KCONFIG_AUTOHEADER_PATH}")
 
 # Add Kconfig binary dir to clean targets
 set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES "${KCONFIG_BINARY_DIR}")
@@ -760,17 +767,26 @@ macro(kconfig_post_configure)
         )
     endif()
 
+    # Use tmp paths for .config and autoheader to prevent recompiling targets
+    set(dotconfig_tmp "${KCONFIG_DOTCONFIG_PATH}_tmp")
+    set(autoheader_tmp "${KCONFIG_AUTOHEADER_PATH}_tmp")
+    file(COPY_FILE ${KCONFIG_DOTCONFIG_PATH} ${dotconfig_tmp})
+
     # Generate config headers
     kconfig_oldconfig(
         "${KCONFIG_MERGED_KCONFIG_PATH}"
-        "${KCONFIG_DOTCONFIG_PATH}"
-        "${KCONFIG_AUTOHEADER_PATH}"
+        "${dotconfig_tmp}"
+        "${autoheader_tmp}"
         "${KCONFIG_AUTOCONFIG_PATH}"
         "${KCONFIG_TRISTATE_PATH}"
     )
 
     # reimport dotconfig file
     kconfig_import_config("${KCONFIG_CONFIG_PREFIX}" "${KCONFIG_DOTCONFIG_PATH}" KCONFIG_KEYS ON)
+
+    # Update .config and autoheader if new files are different
+    file(COPY_FILE ${dotconfig_tmp} ${KCONFIG_DOTCONFIG_PATH} ONLY_IF_DIFFERENT)
+    file(COPY_FILE ${autoheader_tmp} ${KCONFIG_AUTOHEADER_PATH} ONLY_IF_DIFFERENT)
 
     # Configure targets
     kconfig_configure_targets(KCONFIG_KEYS)
