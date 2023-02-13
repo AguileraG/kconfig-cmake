@@ -63,9 +63,6 @@ This script also generates a c header that can be preincluded to targets by sett
 - `KCONFIG_PREINCLUDE_AUTOCONF`
   - Generate pre-compiled header and link to configured targets
   - DEFAULT: `ON`
-- `KCONFIG_NO_BUILD_TOOLS`
-  - If `ON`, will not build kconfig binary tools if not found
-  - DEFAULT: `OFF`
 
 # Dependencies
 

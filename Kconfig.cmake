@@ -126,64 +126,6 @@ function(kconfig_get_option path option _option)
 endfunction()
 
 # #######################################################################
-# kconfig_build_tools <build_dir>
-#
-# Builds the needed tools by kconfig
-# build_dir: directory to place tools
-function(kconfig_build_tools repo_link build_dir)
-    message(DEBUG "kconfig_build_tools")
-    message(DEBUG "   build_dir: ${build_dir}")
-    message(DEBUG "   git_repo:  ${repo_link}")
-    set(_build_dir ${KCONFIG_BINARY_DIR}/kbuild-standalone)
-
-    if(NOT EXISTS ${_build_dir})
-        # clone kbuild-standalone
-        execute_process(
-            COMMAND ${GIT_EXECUTABLE} clone --depth 1 ${repo_link} ${_build_dir}
-            OUTPUT_QUIET ERROR_QUIET
-            WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
-            RESULT_VARIABLE ret)
-
-        if(NOT "${ret}" STREQUAL "0")
-            message(FATAL_ERROR "Could not clone kbuild-standalone: ${ret}")
-        endif()
-    endif()
-
-    # create output dir
-    execute_process(
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${build_dir}"
-        OUTPUT_QUIET ERROR_QUIET
-        WORKING_DIRECTORY ${KCONFIG_BINARY_DIR}
-        RESULT_VARIABLE ret)
-
-    if(NOT "${ret}" STREQUAL "0")
-        message(FATAL_ERROR "Could not build kbuild-standalone: ${ret}")
-    endif()
-
-    # build tools
-    execute_process(
-        COMMAND make -f ${_build_dir}/Makefile.sample O=${build_dir} -j
-        OUTPUT_QUIET ERROR_QUIET
-        WORKING_DIRECTORY "${_build_dir}"
-        RESULT_VARIABLE ret)
-
-    if(NOT "${ret}" STREQUAL "0")
-        message(FATAL_ERROR "Could not build kbuild-standalone: ${ret}")
-    endif()
-
-    # clean up kbuild sources
-    execute_process(
-        COMMAND ${CMAKE_COMMAND} -E rm -r "${_build_dir}"
-        OUTPUT_QUIET ERROR_QUIET
-        WORKING_DIRECTORY "${KCONFIG_BINARY_DIR}"
-        RESULT_VARIABLE ret)
-
-    if(NOT "${ret}" STREQUAL "0")
-        message(FATAL_ERROR "Could not build kbuild-standalone: ${ret}")
-    endif()
-endfunction()
-
-# #######################################################################
 # kconfig_defconfig <kconfig_file> <defconfig> <dotconfig> <autoheader> <autoconf> <tristate>
 #
 # Generate .config from given defconfig
@@ -524,8 +466,6 @@ kconfig_default_variable(KCONFIG_MERGED_KCONFIG_PATH "${KCONFIG_BINARY_DIR}/Kcon
 kconfig_default_variable(KCONFIG_DOTCONFIG_PATH "${KCONFIG_BINARY_DIR}/.config")
 kconfig_default_variable(KCONFIG_PREINCLUDE_AUTOCONF ON)
 kconfig_default_variable(KCONFIG_USE_VARIABLES OFF)
-kconfig_default_variable(KCONFIG_NO_BUILD_TOOLS OFF)
-kconfig_default_variable(KBUILD_STANDALONE_GIT_REPO "https://github.com/ccvelandres/kbuild-standalone")
 
 # Create paths
 file(MAKE_DIRECTORY ${KCONFIG_BINARY_DIR} ${KCONFIG_CONFIG_FRAGMENT_DIR})
@@ -541,15 +481,7 @@ kconfig_find_bin("${KCONFIG_KBUILD_DIR}" KCONFIG_MCONF_BIN kconfig-mconf mconf)
 
 # Check if binaries are found
 if(NOT KCONFIG_CONF_BIN_FOUND OR NOT KCONFIG_MCONF_BIN_FOUND)
-    if(KCONFIG_NO_BUILD_TOOLS)
-        message(FATAL_ERROR "Kconfig binaries not found, try setting KCONFIG_KBUILD_DIR")
-    else()
-        message(WARNING "Kconfig binaries not found, try setting KCONFIG_KBUILD_DIR")
-        message(STATUS "Trying to build tools...")
-        kconfig_build_tools("${KBUILD_STANDALONE_GIT_REPO}" ${KCONFIG_KBUILD_DIR})
-        kconfig_find_bin("${KCONFIG_KBUILD_DIR}/kconfig" KCONFIG_CONF_BIN conf)
-        kconfig_find_bin("${KCONFIG_KBUILD_DIR}/kconfig" KCONFIG_MCONF_BIN mconf)
-    endif()
+    message(FATAL_ERROR "Kconfig binaries not found, try setting KCONFIG_KBUILD_DIR")
 endif()
 
 # Verify if vars are set
